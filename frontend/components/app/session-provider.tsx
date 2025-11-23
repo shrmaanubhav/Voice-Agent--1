@@ -10,11 +10,21 @@ const SessionContext = createContext<{
   isSessionActive: boolean;
   startSession: () => void;
   endSession: () => void;
-}>({
+
+  // NEW ORDER STATES
+  order: any;
+  showOrder: boolean;
+  setShowOrder: (v: boolean) => void;
+}>( {
   appConfig: APP_CONFIG_DEFAULTS,
   isSessionActive: false,
   startSession: () => {},
   endSession: () => {},
+
+  // NEW defaults
+  order: null,
+  showOrder: false,
+  setShowOrder: () => {},
 });
 
 interface SessionProviderProps {
@@ -23,15 +33,44 @@ interface SessionProviderProps {
 }
 
 export const SessionProvider = ({ appConfig, children }: SessionProviderProps) => {
-  const { room, isSessionActive, startSession, endSession } = useRoom(appConfig);
+  const {
+    room,
+    isSessionActive,
+    startSession,
+    endSession,
+    order,
+    showOrder,
+    setShowOrder
+  } = useRoom(appConfig);
+
   const contextValue = useMemo(
-    () => ({ appConfig, isSessionActive, startSession, endSession }),
-    [appConfig, isSessionActive, startSession, endSession]
+    () => ({
+      appConfig,
+      isSessionActive,
+      startSession,
+      endSession,
+
+      // NEW
+      order,
+      showOrder,
+      setShowOrder
+    }),
+    [
+      appConfig,
+      isSessionActive,
+      startSession,
+      endSession,
+      order,
+      showOrder,
+      setShowOrder
+    ]
   );
 
   return (
     <RoomContext.Provider value={room}>
-      <SessionContext.Provider value={contextValue}>{children}</SessionContext.Provider>
+      <SessionContext.Provider value={contextValue}>
+        {children}
+      </SessionContext.Provider>
     </RoomContext.Provider>
   );
 };

@@ -16,6 +16,9 @@ import { useDebugMode } from '@/hooks/useDebug';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '../livekit/scroll-area/scroll-area';
 
+// ⭐ NEW IMPORT
+import OrderSummary from '@/components/app/order-summary';
+
 const MotionBottom = motion.create('div');
 
 const IN_DEVELOPMENT = process.env.NODE_ENV !== 'production';
@@ -58,6 +61,7 @@ export function Fade({ top = false, bottom = false, className }: FadeProps) {
     />
   );
 }
+
 interface SessionViewProps {
   appConfig: AppConfig;
 }
@@ -111,6 +115,9 @@ export const SessionView = ({
 
       {/* Tile Layout */}
       <TileLayout chatOpen={chatOpen} />
+
+      {/* ⭐ ADD ORDER SUMMARY MODAL HERE */}
+      <OrderSummary />
 
       {/* Bottom */}
       <MotionBottom

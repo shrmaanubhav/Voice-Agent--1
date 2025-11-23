@@ -23,9 +23,6 @@ logger = logging.getLogger("agent")
 load_dotenv(".env.local")
 
 
-# ---------------------------
-# SAVE ORDER TO JSON
-# ---------------------------
 def save_order(order):
     fname = f"order_{int(time.time())}.json"
     with open(fname, "w") as f:
@@ -33,69 +30,51 @@ def save_order(order):
     print("✔ Order saved:", fname)
 
 
-# ---------------------------
-# LLM BARISTA ASSISTANT
-# ---------------------------
 class Assistant(Agent):
     def __init__(self):
         super().__init__(
             instructions="""
-You are BrewBuddy — a friendly barista at BrewBuddy Café.
+You are CofeeBuddy — a friendly barista at CofeeBuddy Café.
 Your job is to take voice-based coffee orders.
 
-The order requires 5 fields:
+REQUIRED FIELDS:
 {
   "drinkType": "string",
   "size": "string",
   "milk": "string",
-  "extras": ["string"],
+  "extras": ["string"],   # extras may be empty
   "name": "string"
 }
 
 RULES:
-- Extract only the fields the user explicitly mentions.
-- DO NOT infer unknown fields.
-- ALWAYS return JSON ONLY in this format:
+- Extract only fields explicitly mentioned by the user.
+- If the user says nothing relevant, reply normally.
+- ALWAYS return ONLY this JSON format:
   {
-    "updates": { ... },
-    "message": "your short reply"
+    "updates": {},
+    "message": "short reply"
   }
-- After giving your reply, also ask the next missing question.
-- When all fields are complete, say:
-  "Your order is complete. Saving it now."
-
-Extras examples: whipped cream, caramel, chocolate, cinnamon, mocha.
-Milk examples: whole milk, skim milk, almond milk, oat milk.
-
-No emojis. No markdown.
-Keep replies short and conversational.
-"""
+- No emojis, no markdown.
+            """
         )
 
 
-# ---------------------------
-# PREWARM (load VAD early)
-# ---------------------------
 def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
 
 
-# ---------------------------
-# MAIN ENTRYPOINT
-# ---------------------------
 async def entrypoint(ctx: JobContext):
     ctx.log_context_fields = {"room": ctx.room.name}
 
-    # ORDER STATE
     order_state = {
         "drinkType": "",
         "size": "",
         "milk": "",
-        "extras": [],
+        "extras": [],     # EMPTY EXTRAS ALLOWED
         "name": "",
     }
 
-    # APPLY LLM UPDATES TO STATE
+    # Apply extracted updates from LLM
     def merge_updates(up):
         if not isinstance(up, dict):
             return
@@ -117,7 +96,7 @@ async def entrypoint(ctx: JobContext):
         if up.get("name"):
             order_state["name"] = up["name"]
 
-    # NEXT MISSING FIELD
+    # Next missing mandatory field
     def next_question():
         if not order_state["drinkType"]:
             return "What drink would you like?"
@@ -125,15 +104,12 @@ async def entrypoint(ctx: JobContext):
             return "What size should I make it?"
         if not order_state["milk"]:
             return "What type of milk do you prefer?"
-        if len(order_state["extras"]) == 0:
-            return "Would you like any extras?"
+        # ❌ Removed extras requirement
         if not order_state["name"]:
             return "May I have your name for the order?"
         return None
 
-    # ---------------------------
-    # SESSION SETUP
-    # ---------------------------
+    # Voice session
     session = AgentSession(
         stt=deepgram.STT(model="nova-3"),
         llm=google.LLM(model="gemini-2.5-flash"),
@@ -148,7 +124,6 @@ async def entrypoint(ctx: JobContext):
         preemptive_generation=True,
     )
 
-    # METRICS
     usage_collector = metrics.UsageCollector()
 
     @session.on("metrics_collected")
@@ -162,31 +137,30 @@ async def entrypoint(ctx: JobContext):
 
     ctx.add_shutdown_callback(log_usage)
 
-    # START PIPELINE + JOIN ROOM
     await session.start(agent=Assistant(), room=ctx.room)
     await ctx.connect()
 
-    # ---------------------------
-    # HANDLE USER TEXT
-    # ---------------------------
+    # Handle user text
     @session.on("input_text")
     async def on_input_text(ev):
         user_text = ev.text.strip()
         print("User said:", user_text)
 
-        # Build prompt including current order state
         prompt = f"""
-Current order state:
+Extract ONLY the fields the user explicitly mentioned.
+
+CURRENT ORDER:
 {json.dumps(order_state)}
 
-User: "{user_text}"
+USER SAID: "{user_text}"
 
-Extract only the fields user mentioned.
-Return ONLY JSON of the form:
-{{
-  "updates": {{}},
-  "message": "string"
-}}
+RULES:
+- If the user did NOT mention order details, respond:
+  {{"updates": {{}}, "message": "normal"}}
+- If they DID mention order fields, return:
+  {{"updates": {{...}}, "message": "short reply"}}
+
+STRICT JSON ONLY.
 """
 
         try:
@@ -194,39 +168,45 @@ Return ONLY JSON of the form:
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
             )
-
             llm_resp = json.loads(response.text)
+
         except Exception as e:
             print("LLM error:", e)
-            await session.say("Sorry, can you repeat that?")
+            await session.say("Sorry, could you repeat that?")
             return
 
         updates = llm_resp.get("updates", {})
         message = llm_resp.get("message", "")
 
-        # Speak LLM's reply
-        if message:
+        # Only speak meaningful replies
+        if message and message != "normal":
             await session.say(message)
 
-        # Merge updates
         merge_updates(updates)
 
-        # Ask next question
+        # Ask next missing field
         next_q = next_question()
 
         if next_q:
             await session.say(next_q)
         else:
+            # ORDER COMPLETE 🎉
             await session.say("Your order is complete. Saving it now.")
             save_order(order_state)
-            print("FINAL ORDER:", order_state)
-            await session.say("Thanks for ordering at BrewBuddy. Enjoy your drink!")
+
+            # Notify frontend
+            await session.send_data(
+                kind="webhook",
+                data=json.dumps({
+                    "type": "order_complete",
+                    "order": order_state
+                })
+            )
+
+            await session.say("Thanks for ordering at BrewBuddy!")
             await ctx.end()
 
-    # END OF ENTRYPOINT
 
-
-# RUN APP
 if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
