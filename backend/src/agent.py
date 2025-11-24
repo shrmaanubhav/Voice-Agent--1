@@ -1,6 +1,7 @@
 import logging
 import json
 import time
+import os
 from dotenv import load_dotenv
 
 from livekit.agents import (
@@ -10,106 +11,109 @@ from livekit.agents import (
     JobProcess,
     WorkerOptions,
     cli,
-    metrics,
     tokenize,
+    metrics,
     MetricsCollectedEvent,
 )
 
-from livekit.plugins import murf, silero, google, deepgram
+from livekit.plugins import silero, google, deepgram, murf
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 
+# ---------------------------------------------------------------------
+# INIT
+# ---------------------------------------------------------------------
 logger = logging.getLogger("agent")
 load_dotenv(".env.local")
 
-
-def save_order(order):
-    fname = f"order_{int(time.time())}.json"
-    with open(fname, "w") as f:
-        json.dump(order, f, indent=2)
-    print("✔ Order saved:", fname)
+LOG_FILE = "wellness_log.json"
 
 
-class Assistant(Agent):
+# ---------------------------------------------------------------------
+# JSON LOG HELPERS
+# ---------------------------------------------------------------------
+def load_log():
+    if not os.path.exists(LOG_FILE):
+        with open(LOG_FILE, "w") as f:
+            f.write("[]")
+        return []
+
+    try:
+        with open(LOG_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return []
+
+
+def save_log(entry):
+    log = load_log()
+    log.append(entry)
+    with open(LOG_FILE, "w") as f:
+        json.dump(log, f, indent=2)
+    print("✔ Wellness log updated!")
+
+
+# ---------------------------------------------------------------------
+# ASSISTANT
+# ---------------------------------------------------------------------
+class WellnessAssistant(Agent):
     def __init__(self):
         super().__init__(
             instructions="""
-You are CofeeBuddy — a friendly barista at CofeeBuddy Café.
-Your job is to take voice-based coffee orders.
+You are a daily health & wellness companion.
+You are supportive, grounded, and NEVER give medical or diagnostic advice.
 
-REQUIRED FIELDS:
-{
-  "drinkType": "string",
-  "size": "string",
-  "milk": "string",
-  "extras": ["string"],   # extras may be empty
-  "name": "string"
-}
+Your job:
+1. Ask about mood
+2. Ask about energy level
+3. Ask about stress
+4. Ask for 1–3 goals for today
+5. Provide a SHORT supportive suggestion
+6. Recap the check-in
+7. End conversation
 
-RULES:
-- Extract only fields explicitly mentioned by the user.
-- If the user says nothing relevant, reply normally.
-- ALWAYS return ONLY this JSON format:
-  {
-    "updates": {},
-    "message": "short reply"
-  }
-- No emojis, no markdown.
-            """
+Behavior rules:
+- Speak normally, with short replies.
+- No emojis.
+- No markdown.
+- No therapy, no clinical advice.
+- Keep the tone supportive and realistic.
+"""
         )
 
 
+# ---------------------------------------------------------------------
+# PREWARM
+# ---------------------------------------------------------------------
 def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
 
 
+# ---------------------------------------------------------------------
+# ENTRYPOINT
+# ---------------------------------------------------------------------
 async def entrypoint(ctx: JobContext):
     ctx.log_context_fields = {"room": ctx.room.name}
 
-    order_state = {
-        "drinkType": "",
-        "size": "",
-        "milk": "",
-        "extras": [],     # EMPTY EXTRAS ALLOWED
-        "name": "",
+    # --------------------------
+    # STATE MACHINE
+    # --------------------------
+    conversation = {
+        "phase": "intro",
+        "mood": "",
+        "energy": "",
+        "stress": "",
+        "goals": [],
+        "suggestion": "",
     }
 
-    # Apply extracted updates from LLM
-    def merge_updates(up):
-        if not isinstance(up, dict):
-            return
+    # Load past logs
+    past_log = load_log()
+    last_entry = past_log[-1] if past_log else None
 
-        if up.get("drinkType"):
-            order_state["drinkType"] = up["drinkType"]
-
-        if up.get("size"):
-            order_state["size"] = up["size"]
-
-        if up.get("milk"):
-            order_state["milk"] = up["milk"]
-
-        if up.get("extras") and isinstance(up["extras"], list):
-            for x in up["extras"]:
-                if x not in order_state["extras"]:
-                    order_state["extras"].append(x)
-
-        if up.get("name"):
-            order_state["name"] = up["name"]
-
-    # Next missing mandatory field
-    def next_question():
-        if not order_state["drinkType"]:
-            return "What drink would you like?"
-        if not order_state["size"]:
-            return "What size should I make it?"
-        if not order_state["milk"]:
-            return "What type of milk do you prefer?"
-        # ❌ Removed extras requirement
-        if not order_state["name"]:
-            return "May I have your name for the order?"
-        return None
-
-    # Voice session
+    # --------------------------
+    # SESSION SETUP
+    # --------------------------
     session = AgentSession(
         stt=deepgram.STT(model="nova-3"),
         llm=google.LLM(model="gemini-2.5-flash"),
@@ -128,90 +132,131 @@ async def entrypoint(ctx: JobContext):
 
     @session.on("metrics_collected")
     def _on_metrics(ev: MetricsCollectedEvent):
-        metrics.log_metrics(ev.metrics)
         usage_collector.collect(ev.metrics)
 
     async def log_usage():
         summary = usage_collector.get_summary()
-        logger.info(f"Usage Summary: {summary}")
+        logger.info(f"Usage summary: {summary}")
 
     ctx.add_shutdown_callback(log_usage)
 
-    await session.start(agent=Assistant(), room=ctx.room)
+    # Start & join
+    await session.start(agent=WellnessAssistant(), room=ctx.room)
     await ctx.connect()
 
-    # Handle user text
+    # Initial message
+    if last_entry:
+        await session.say(
+            f"Welcome back. Last time you mentioned feeling {last_entry['mood']} and your energy was {last_entry['energy']}. "
+            "Let's check in again. How are you feeling today?"
+        )
+    else:
+        await session.say("Hi, good to see you. How are you feeling today?")
+
+    conversation["phase"] = "mood"
+
+    # ------------------------------------------------------------------
+    # HANDLE USER TEXT
+    # ------------------------------------------------------------------
     @session.on("input_text")
     async def on_input_text(ev):
-        user_text = ev.text.strip()
-        print("User said:", user_text)
+        user = ev.text.strip()
+        phase = conversation["phase"]
+        print(f"[PHASE={phase}] User:", user)
 
-        prompt = f"""
-Extract ONLY the fields the user explicitly mentioned.
-
-CURRENT ORDER:
-{json.dumps(order_state)}
-
-USER SAID: "{user_text}"
-
-RULES:
-- If the user did NOT mention order details, respond:
-  {{"updates": {{}}, "message": "normal"}}
-- If they DID mention order fields, return:
-  {{"updates": {{...}}, "message": "short reply"}}
-
-STRICT JSON ONLY.
-"""
-
-        try:
-            response = await session.llm.complete(
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-            )
-            llm_resp = json.loads(response.text)
-
-        except Exception as e:
-            print("LLM error:", e)
-            await session.say("Sorry, could you repeat that?")
+        # --------- MOOD ----------
+        if phase == "mood":
+            conversation["mood"] = user
+            conversation["phase"] = "energy"
+            await session.say("Got it. How's your energy today?")
             return
 
-        updates = llm_resp.get("updates", {})
-        message = llm_resp.get("message", "")
+        # --------- ENERGY ----------
+        if phase == "energy":
+            conversation["energy"] = user
+            conversation["phase"] = "stress"
+            await session.say("Thanks. Anything stressing you out today?")
+            return
 
-        # Only speak meaningful replies
-        if message and message != "normal":
-            await session.say(message)
+        # --------- STRESS ----------
+        if phase == "stress":
+            conversation["stress"] = user
+            conversation["phase"] = "goals"
+            await session.say("What are 1 to 3 things you'd like to get done today?")
+            return
 
-        merge_updates(updates)
+        # --------- GOALS ----------
+        if phase == "goals":
+            # Split into goals by commas or sentences
+            goals = [g.strip() for g in user.replace(".", ",").split(",") if g.strip()]
+            conversation["goals"] = goals
+            conversation["phase"] = "suggestion"
 
-        # Ask next missing field
-        next_q = next_question()
+            # Get LLM suggestion
+            prompt = f"""
+You are a supportive wellness companion.
+Give ONE SHORT suggestion based on:
 
-        if next_q:
-            await session.say(next_q)
-        else:
-            # ORDER COMPLETE 🎉
-            await session.say("Your order is complete. Saving it now.")
-            save_order(order_state)
+Mood: {conversation['mood']}
+Energy: {conversation['energy']}
+Stress: {conversation['stress']}
+Goals: {conversation['goals']}
 
-            # Notify frontend
-            await session.send_data(
-                kind="webhook",
-                data=json.dumps({
-                    "type": "order_complete",
-                    "order": order_state
-                })
+Rules:
+- Simple and grounded.
+- No medical or diagnostic guidance.
+- Short sentence.
+"""
+            try:
+                suggestion_rsp = await session.llm.complete(
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                suggestion = suggestion_rsp.text.strip()
+            except:
+                suggestion = "Try to keep things simple and take short breaks if needed."
+
+            conversation["suggestion"] = suggestion
+
+            await session.say(suggestion)
+
+            # Move to recap
+            conversation["phase"] = "recap"
+            await session.say(
+                f"Here's your recap. You're feeling {conversation['mood']}, "
+                f"your energy is {conversation['energy']}, "
+                f"stress level: {conversation['stress']}. "
+                f"Your goals are: {', '.join(conversation['goals'])}. "
+                "Does this sound right?"
             )
+            return
 
-            await session.say("Thanks for ordering at BrewBuddy!")
+        # --------- RECAP CONFIRMATION ----------
+        if phase == "recap":
+            await session.say("Great. I'll save this check-in. Talk to you next time!")
+
+            entry = {
+                "timestamp": int(time.time()),
+                "mood": conversation["mood"],
+                "energy": conversation["energy"],
+                "stress": conversation["stress"],
+                "goals": conversation["goals"],
+                "summary": conversation["suggestion"],
+            }
+
+            save_log(entry)
             await ctx.end()
 
+    # end on_input_text
 
+
+# ---------------------------------------------------------------------
+# RUN APP
+# ---------------------------------------------------------------------
 if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            agent_name="assistant",
+            agent_name="wellness_assistant",
         )
     )
