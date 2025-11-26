@@ -1,6 +1,11 @@
 import logging
 import json
 import time
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Any
+import asyncio
+
 from dotenv import load_dotenv
 
 from livekit.agents import (
@@ -10,11 +15,8 @@ from livekit.agents import (
     JobProcess,
     WorkerOptions,
     cli,
-    metrics,
     tokenize,
-    MetricsCollectedEvent,
 )
-
 from livekit.plugins import murf, silero, google, deepgram
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
@@ -23,38 +25,151 @@ logger = logging.getLogger("agent")
 load_dotenv(".env.local")
 
 
-def save_order(order):
-    fname = f"order_{int(time.time())}.json"
-    with open(fname, "w") as f:
-        json.dump(order, f, indent=2)
-    print("✔ Order saved:", fname)
+print("🚀 Zepto Customer Service Agent (B2C) Loaded")
 
 
-class Assistant(Agent):
-    def __init__(self):
-        super().__init__(
-            instructions="""
-You are CofeeBuddy — a friendly barista at CofeeBuddy Café.
-Your job is to take voice-based coffee orders.
-
-REQUIRED FIELDS:
-{
-  "drinkType": "string",
-  "size": "string",
-  "milk": "string",
-  "extras": ["string"],   # extras may be empty
-  "name": "string"
+COMPANY_INFO = {
+    "name": "Zepto",
+    "tagline": "India's fastest instant commerce platform, delivering groceries and essentials in minutes.",
+    "description": (
+        "Zepto is a quick commerce service specializing in 10-20 minute delivery of "
+        "groceries, fresh produce, and daily essentials. We operate in major Indian cities "
+        "using a dark store model to ensure speed and freshness."
+    ),
+    "delivery_promise": "Guaranteed delivery in 10-20 minutes in serviceable areas.",
+    "service_areas": [
+        "Mumbai", "Delhi NCR", "Bengaluru", "Chennai", "Pune", "Hyderabad",
+    ],
 }
 
-RULES:
-- Extract only fields explicitly mentioned by the user.
-- If the user says nothing relevant, reply normally.
-- ALWAYS return ONLY this JSON format:
-  {
-    "updates": {},
-    "message": "short reply"
-  }
-- No emojis, no markdown.
+POLICY_INFO = {
+    "zepto_pass": {
+        "name": "Zepto Pass",
+        "description": "A paid subscription loyalty program offering benefits for frequent users.",
+        "benefits": [
+            "Reduced or zero delivery fees on orders over a minimum value.",
+            "Exclusive discounts and early access to sales.",
+            "Priority customer support.",
+        ],
+        "pricing_note": "Pricing is charged monthly or annually and is subject to change. Check the app for the latest price.",
+    },
+    "delivery_fees": "Standard delivery fees may apply, typically waived for orders over a minimum cart value or with Zepto Pass.",
+    "return_policy": "Easy returns and refunds for damaged, incorrect, or missing items. Must be initiated within 24 hours of delivery through the app.",
+    "operating_hours": "Typically 6:00 AM to 1:00 AM, but hours may vary by city and dark store location.",
+}
+
+
+FAQ_DATA = [
+    {
+        "question": "How fast is Zepto's delivery?",
+        "answer": (
+            "Zepto specializes in quick commerce with a target delivery time of 10 to 20 minutes "
+            "from the moment you place your order to it arriving at your doorstep."
+        ),
+        "category": "delivery",
+    },
+    {
+        "question": "What is Zepto Pass?",
+        "answer": (
+            "Zepto Pass is our subscription service that gives you benefits like reduced delivery "
+            "fees and special discounts on certain items for a low monthly fee."
+        ),
+        "category": "loyalty",
+    },
+    {
+        "question": "Can I return a damaged product?",
+        "answer": (
+            "Yes, we have an easy return policy. If you receive a damaged, incorrect, or "
+            "missing item, please report it via the app within 24 hours for a refund."
+        ),
+        "category": "policy",
+    },
+    {
+        "question": "What areas does Zepto cover?",
+        "answer": (
+            "We operate in major Indian metro areas, including Mumbai, Bengaluru, Delhi NCR, "
+            "and others. You can check your specific pincode in the app."
+        ),
+        "category": "location",
+    },
+    {
+        "question": "What kind of products do you sell?",
+        "answer": (
+            "We sell a wide range of products including fresh fruits and vegetables, dairy, "
+            "packaged groceries, personal care items, and other daily essentials."
+        ),
+        "category": "products",
+    },
+]
+
+
+def build_knowledge_blob() -> str:
+    blob = {
+        "company": COMPANY_INFO,
+        "policies": POLICY_INFO,
+        "faq": FAQ_DATA,
+    }
+    return json.dumps(blob, ensure_ascii=False, indent=2)
+
+
+LEADS_FILE = Path("zepto_customer_records.json")
+
+
+def load_existing_leads():
+    if LEADS_FILE.exists():
+        try:
+            return json.loads(LEADS_FILE.read_text())
+        except:
+            return []
+    return []
+
+
+def save_lead(lead: Dict[str, Any], summary: str):
+    leads = load_existing_leads()
+    entry = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "summary": summary,
+        "customer_info": lead,
+    }
+    leads.append(entry)
+    LEADS_FILE.write_text(json.dumps(leads, indent=2))
+    print("✔ Saved customer record to zepto_customer_records.json")
+
+
+class ZeptoB2CAgent(Agent):
+    def __init__(self, knowledge_blob: str):
+        super().__init__(
+            instructions=f"""
+You are the Customer Support and Adoption Agent for Zepto, the instant commerce platform.
+Your focus is to provide excellent service, answer questions, and encourage app usage and Zepto Pass adoption.
+
+OFFICIAL ZEPTO CUSTOMER DATA:
+{knowledge_blob}
+
+Your job:
+- Warm, polite greeting
+- Answer customer questions accurately using ONLY the ZEPTO CUSTOMER DATA provided
+- Collect basic customer info naturally:
+    name
+    email
+    phone_number
+    city
+    primary_issue (e.g., "delivery delay", "Zepto Pass inquiry", "product question")
+- If the issue is complex (like "delivery delay" or "refund status"), note the issue and set "escalate": true to hand off to a human.
+- Detect when the conversation is finished and mark "done": true
+- NEVER invent facts that are not in the data
+- Be friendly, concise, and helpful. Use a polite, professional tone.
+
+Return STRICT JSON:
+
+{{
+  "reply": "your agent reply",
+  "lead_updates": {{...}},
+  "done": false,
+  "escalate": false 
+}}
+
+DO NOT return anything else.
             """
         )
 
@@ -63,53 +178,38 @@ def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
 
 
+
 async def entrypoint(ctx: JobContext):
     ctx.log_context_fields = {"room": ctx.room.name}
 
-    order_state = {
-        "drinkType": "",
-        "size": "",
-        "milk": "",
-        "extras": [],     # EMPTY EXTRAS ALLOWED
+    knowledge_blob = build_knowledge_blob()
+    
+    # Safety lock to prevent race conditions on concurrent input
+    llm_lock = asyncio.Lock() 
+
+    lead_state = {
         "name": "",
+        "email": "",
+        "phone_number": "",
+        "city": "",
+        "primary_issue": "",
     }
 
-    # Apply extracted updates from LLM
     def merge_updates(up):
         if not isinstance(up, dict):
             return
+        for k in lead_state:
+            if k in up and up[k]:
+                lead_state[k] = up[k]
 
-        if up.get("drinkType"):
-            order_state["drinkType"] = up["drinkType"]
+    def make_summary():
+        return (
+            f"Customer: {lead_state.get('name') or 'Unknown customer'} ({lead_state.get('email') or 'No email'}). "
+            f"Location: {lead_state.get('city') or 'Unknown city'}. "
+            f"Primary Issue: {lead_state.get('primary_issue') or 'Not specified'}."
+        )
 
-        if up.get("size"):
-            order_state["size"] = up["size"]
-
-        if up.get("milk"):
-            order_state["milk"] = up["milk"]
-
-        if up.get("extras") and isinstance(up["extras"], list):
-            for x in up["extras"]:
-                if x not in order_state["extras"]:
-                    order_state["extras"].append(x)
-
-        if up.get("name"):
-            order_state["name"] = up["name"]
-
-    # Next missing mandatory field
-    def next_question():
-        if not order_state["drinkType"]:
-            return "What drink would you like?"
-        if not order_state["size"]:
-            return "What size should I make it?"
-        if not order_state["milk"]:
-            return "What type of milk do you prefer?"
-        # ❌ Removed extras requirement
-        if not order_state["name"]:
-            return "May I have your name for the order?"
-        return None
-
-    # Voice session
+    # ---- Create session ----
     session = AgentSession(
         stt=deepgram.STT(model="nova-3"),
         llm=google.LLM(model="gemini-2.5-flash"),
@@ -117,101 +217,95 @@ async def entrypoint(ctx: JobContext):
             voice="en-US-matthew",
             style="Conversation",
             tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-            text_pacing=True,
         ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
         preemptive_generation=True,
     )
 
-    usage_collector = metrics.UsageCollector()
-
-    @session.on("metrics_collected")
-    def _on_metrics(ev: MetricsCollectedEvent):
-        metrics.log_metrics(ev.metrics)
-        usage_collector.collect(ev.metrics)
-
-    async def log_usage():
-        summary = usage_collector.get_summary()
-        logger.info(f"Usage Summary: {summary}")
-
-    ctx.add_shutdown_callback(log_usage)
-
-    await session.start(agent=Assistant(), room=ctx.room)
-    await ctx.connect()
-
-    # Handle user text
+    # ---- User input ----
     @session.on("input_text")
-    async def on_input_text(ev):
+    async def on_input(ev):
         user_text = ev.text.strip()
-        print("User said:", user_text)
+        print("👂 User:", user_text)
 
-        prompt = f"""
-Extract ONLY the fields the user explicitly mentioned.
+        async with llm_lock:
+            prompt = f"""
+You are the Zepto Customer Support Agent.
 
-CURRENT ORDER:
-{json.dumps(order_state)}
+CURRENT CUSTOMER INFO:
+{json.dumps(lead_state, indent=2)}
 
-USER SAID: "{user_text}"
+User said: "{user_text}"
 
-RULES:
-- If the user did NOT mention order details, respond:
-  {{"updates": {{}}, "message": "normal"}}
-- If they DID mention order fields, return:
-  {{"updates": {{...}}, "message": "short reply"}}
-
-STRICT JSON ONLY.
+Your job:
+- Respond politely and professionally
+- Answer only from the provided customer data (in system instructions)
+- Update relevant customer fields
+- If the issue is complex (refund, delivery status, order ID required), set "escalate": true
+- If the conversation is finished, set "done": true
+- Output STRICT JSON only.
 """
 
-        try:
-            response = await session.llm.complete(
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-            )
-            llm_resp = json.loads(response.text)
+            try:
+                resp = await session.llm.complete(
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                )
+                data = json.loads(resp.text)
+            except Exception as e:
+                print("LLM error:", e)
+                await session.say("I apologize, I'm having trouble connecting to my service. Could you repeat your question, please?")
+                return
 
-        except Exception as e:
-            print("LLM error:", e)
-            await session.say("Sorry, could you repeat that?")
-            return
+            reply = data.get("reply", "")
+            updates = data.get("lead_updates", {}) or {}
+            done = bool(data.get("done", False))
+            escalate = bool(data.get("escalate", False))
 
-        updates = llm_resp.get("updates", {})
-        message = llm_resp.get("message", "")
+            merge_updates(updates)
+            print("Customer state:", lead_state)
+            
+            # 1. Handle Escalation
+            if escalate:
+                await session.say("I understand. That sounds like an issue that requires a specific order number or real-time check.")
 
-        # Only speak meaningful replies
-        if message and message != "normal":
-            await session.say(message)
+                if lead_state["phone_number"] or lead_state["email"]:
+                     await session.say("I have your contact details. I am now transferring you to a human agent who can access your account details directly.")
+                else:
+                    await session.say("Could you please tell me your **phone number** or **email** so a human agent can easily reach you about this order?")
 
-        merge_updates(updates)
+                summary = make_summary()
+                save_lead(lead_state, summary + " (STATUS: ESCALATED)")
+                await ctx.end() # End agent session for human takeover
+                return
 
-        # Ask next missing field
-        next_q = next_question()
+            if reply:
+                await session.say(reply)
 
-        if next_q:
-            await session.say(next_q)
-        else:
-            # ORDER COMPLETE 🎉
-            await session.say("Your order is complete. Saving it now.")
-            save_order(order_state)
+            # 3. Handle Done
+            if done:
+                summary = make_summary()
+                await session.say("I hope that answers your questions about Zepto.")
+                
+                # Offer a final value proposition before hanging up
+                if "Zepto Pass" not in summary:
+                     await session.say("If you plan to order often, don't forget to check out **Zepto Pass** for reduced delivery fees!")
 
-            # Notify frontend
-            await session.send_data(
-                kind="webhook",
-                data=json.dumps({
-                    "type": "order_complete",
-                    "order": order_state
-                })
-            )
+                save_lead(lead_state, summary)
+                await session.say("Thank you for choosing Zepto. Have a great day!")
+                await ctx.end()
 
-            await session.say("Thanks for ordering at BrewBuddy!")
-            await ctx.end()
+
+    # ---- Start session ----
+    await session.start(agent=ZeptoB2CAgent(knowledge_blob=knowledge_blob), room=ctx.room)
+    await ctx.connect()
+
+    await session.say(
+        "Hello! Welcome to Zepto Customer Support. I'm here to help you with your orders, Zepto Pass, or any questions about our 10-20 minute delivery promise. "
+        "How can I assist you today?"
+    )
 
 
 if __name__ == "__main__":
-    cli.run_app(
-        WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            prewarm_fnc=prewarm,
-            agent_name="assistant",
-        )
-    )
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
