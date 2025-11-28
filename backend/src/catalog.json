@@ -1,0 +1,102 @@
+[
+  {
+    "id": "bread-400g",
+    "name": "Britannia Bread 400g",
+    "category": "Bakery",
+    "price": 50,
+    "brand": "Britannia",
+    "size": "400g",
+    "units": "pack",
+    "tags": ["bread", "breakfast"]
+  },
+  {
+    "id": "eggs-6pc",
+    "name": "Fresh Eggs Pack of 6",
+    "category": "Dairy & Eggs",
+    "price": 65,
+    "brand": "Farm Fresh",
+    "size": "6pcs",
+    "units": "tray",
+    "tags": ["eggs", "protein"]
+  },
+  {
+    "id": "oil-1l",
+    "name": "Fortune Sunflower Oil 1L",
+    "category": "Staples",
+    "price": 145,
+    "brand": "Fortune",
+    "size": "1L",
+    "units": "bottle",
+    "tags": ["cooking oil", "essential"]
+  },
+  {
+    "id": "biscuit-parle-g",
+    "name": "Parle-G Biscuits 800g",
+    "category": "Snacks",
+    "price": 72,
+    "brand": "Parle",
+    "size": "800g",
+    "units": "pack",
+    "tags": ["biscuits", "snack"]
+  },
+  {
+    "id": "coffee-200g",
+    "name": "Nescafé Classic Coffee 200g",
+    "category": "Beverages",
+    "price": 340,
+    "brand": "Nescafé",
+    "size": "200g",
+    "units": "jar",
+    "tags": ["coffee", "caffeine"]
+  },
+  {
+    "id": "dal-tur-1kg",
+    "name": "Tur Dal 1kg",
+    "category": "Staples",
+    "price": 130,
+    "brand": "Urad",
+    "size": "1kg",
+    "units": "bag",
+    "tags": ["dal", "protein"]
+  },
+  {
+    "id": "soap-4pack",
+    "name": "Dettol Soap (4 x 125g)",
+    "category": "Personal Care",
+    "price": 199,
+    "brand": "Dettol",
+    "size": "4x125g",
+    "units": "pack",
+    "tags": ["soap", "hygiene"]
+  },
+  {
+    "id": "shampoo-340ml",
+    "name": "Dove Shampoo 340ml",
+    "category": "Personal Care",
+    "price": 265,
+    "brand": "Dove",
+    "size": "340ml",
+    "units": "bottle",
+    "tags": ["hair care"]
+  },
+  {
+    "id": "salt-1kg",
+    "name": "Tata Salt 1kg",
+    "category": "Staples",
+    "price": 28,
+    "brand": "Tata",
+    "size": "1kg",
+    "units": "bag",
+    "tags": ["salt", "essential"]
+  },
+  {
+    "id": "chips-lays-50g",
+    "name": "Lays Classic Salted 50g",
+    "category": "Snacks",
+    "price": 20,
+    "brand": "Lays",
+    "size": "50g",
+    "units": "pack",
+    "tags": ["chips", "snack"]
+  }
+]
