@@ -1,3 +1,5 @@
+"use client";
+
 import { type VariantProps } from 'class-variance-authority';
 import { Track } from 'livekit-client';
 import { MicrophoneIcon } from '@phosphor-icons/react/dist/ssr';
@@ -34,235 +36,272 @@ interface ContainerProps {
 
 function Container({ componentName, children, className }: ContainerProps) {
   return (
-    <div className={cn('space-y-4', className)}>
-      <h3 className="text-foreground text-2xl font-bold">
-        <span className="tracking-tight">{componentName}</span>
+    <div
+      className={cn(
+        "space-y-4 rounded-3xl p-8 backdrop-blur-xl border border-purple-500/20 shadow-[0_0_40px_rgba(168,85,247,0.3)] bg-black/40",
+        className
+      )}
+    >
+      <h3 className="text-purple-200 text-2xl font-bold tracking-wide drop-shadow-md">
+        {componentName}
       </h3>
-      <div className="bg-background border-input space-y-4 rounded-3xl border p-8 drop-shadow-lg/5">
-        {children}
-      </div>
+
+      <div className="space-y-4">{children}</div>
     </div>
   );
 }
 
 function StoryTitle({ children }: { children: React.ReactNode }) {
-  return <h4 className="text-muted-foreground mb-2 font-mono text-xs uppercase">{children}</h4>;
+  return (
+    <h4 className="text-purple-400 mb-2 font-mono text-xs uppercase tracking-widest">
+      {children}
+    </h4>
+  );
 }
 
 export default function Base() {
   return (
-    <>
-      <h2 className="mt-40 mb-8 text-4xl font-extralight tracking-tight">Primitives</h2>
+    <div className="relative min-h-screen w-full bg-[#050507] overflow-x-hidden">
 
-      {/* Button */}
-      <Container componentName="Button">
-        <table className="w-full">
-          <thead className="font-mono text-xs font-normal uppercase [&_th]:w-1/5 [&_th]:p-2 [&_th]:text-center [&_th]:font-normal">
-            <tr>
-              <th></th>
-              <th>Small</th>
-              <th>Default</th>
-              <th>Large</th>
-              <th>Icon</th>
-            </tr>
-          </thead>
-          <tbody className="[&_td]:p-2 [&_td:not(:first-child)]:text-center">
-            {['default', 'primary', 'secondary', 'outline', 'ghost', 'link', 'destructive'].map(
-              (variant) => (
+      {/* NEON GLOW BACKGROUND LAYERS */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute top-1/4 left-1/3 w-[600px] h-[600px] bg-purple-700/30 blur-[200px] rounded-full"></div>
+        <div className="absolute bottom-10 right-1/4 w-[400px] h-[400px] bg-blue-600/20 blur-[160px] rounded-full"></div>
+        <div className="absolute top-10 right-10 w-40 h-40 bg-pink-600/30 blur-[120px] rounded-full"></div>
+      </div>
+
+      {/* FLOATING PARTICLES */}
+      <FloatingParticles />
+
+      {/* MAIN CONTENT */}
+      <div className="relative z-20 max-w-5xl mx-auto py-32 space-y-20 text-white">
+
+        <h2 className="text-center text-5xl font-extralight tracking-tight text-purple-100 drop-shadow-lg">
+          UI Component Showcase
+        </h2>
+
+        {/* Button */}
+        <Container componentName="Button">
+          <table className="w-full">
+            <thead className="font-mono text-xs uppercase text-purple-300 [&_th]:p-2 [&_th]:text-center">
+              <tr>
+                <th></th>
+                <th>Small</th>
+                <th>Default</th>
+                <th>Large</th>
+                <th>Icon</th>
+              </tr>
+            </thead>
+            <tbody className="[&_td]:p-2 [&_td:not(:first-child)]:text-center">
+              {['default', 'primary', 'secondary', 'outline', 'ghost', 'link', 'destructive'].map(
+                (variant) => (
+                  <tr key={variant}>
+                    <td className="text-right font-mono text-xs uppercase text-purple-400">
+                      {variant}
+                    </td>
+                    {['sm', 'default', 'lg', 'icon'].map((size) => (
+                      <td key={size}>
+                        <Button
+                          variant={variant as buttonVariantsType}
+                          size={size as buttonVariantsSizeType}
+                        >
+                          {size === 'icon' ? <MicrophoneIcon size={16} weight="bold" /> : 'Button'}
+                        </Button>
+                      </td>
+                    ))}
+                  </tr>
+                )
+              )}
+            </tbody>
+          </table>
+        </Container>
+
+        {/* Toggle */}
+        <Container componentName="Toggle">
+          <table className="w-full">
+            <thead className="font-mono text-xs uppercase text-purple-300 [&_th]:p-2 [&_th]:text-center">
+              <tr>
+                <th></th>
+                <th>Small</th>
+                <th>Default</th>
+                <th>Large</th>
+                <th>Icon</th>
+              </tr>
+            </thead>
+            <tbody className="[&_td]:p-2 [&_td:not(:first-child)]:text-center">
+              {['default', 'primary', 'secondary', 'outline'].map((variant) => (
                 <tr key={variant}>
-                  <td className="text-right font-mono text-xs font-normal uppercase">{variant}</td>
+                  <td className="text-right font-mono text-xs uppercase text-purple-400">
+                    {variant}
+                  </td>
                   {['sm', 'default', 'lg', 'icon'].map((size) => (
                     <td key={size}>
-                      <Button
-                        variant={variant as buttonVariantsType}
-                        size={size as buttonVariantsSizeType}
+                      <Toggle
+                        size={size as toggleVariantsSizeType}
+                        variant={variant as toggleVariantsType}
                       >
-                        {size === 'icon' ? <MicrophoneIcon size={16} weight="bold" /> : 'Button'}
-                      </Button>
+                        {size === 'icon' ? <MicrophoneIcon size={16} weight="bold" /> : 'Toggle'}
+                      </Toggle>
                     </td>
                   ))}
                 </tr>
-              )
-            )}
-          </tbody>
-        </table>
-      </Container>
+              ))}
+            </tbody>
+          </table>
+        </Container>
 
-      {/* Toggle */}
-      <Container componentName="Toggle">
-        <table className="w-full">
-          <thead className="font-mono text-xs font-normal uppercase [&_th]:w-1/5 [&_th]:p-2 [&_th]:text-center [&_th]:font-normal">
-            <tr>
-              <th></th>
-              <th>Small</th>
-              <th>Default</th>
-              <th>Large</th>
-              <th>Icon</th>
-            </tr>
-          </thead>
-          <tbody className="[&_td]:p-2 [&_td:not(:first-child)]:text-center">
-            {['default', 'primary', 'secondary', 'outline'].map((variant) => (
-              <tr key={variant}>
-                <td className="text-right font-mono text-xs font-normal uppercase">{variant}</td>
-                {['sm', 'default', 'lg', 'icon'].map((size) => (
-                  <td key={size}>
-                    <Toggle
-                      size={size as toggleVariantsSizeType}
-                      variant={variant as toggleVariantsType}
-                    >
-                      {size === 'icon' ? <MicrophoneIcon size={16} weight="bold" /> : 'Toggle'}
-                    </Toggle>
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Container>
+        {/* Alert */}
+        <Container componentName="Alert">
+          {['default', 'destructive'].map((variant) => (
+            <div key={variant}>
+              <StoryTitle>{variant}</StoryTitle>
+              <Alert variant={variant as alertVariantsType}>
+                <AlertTitle>Alert {variant} title</AlertTitle>
+                <AlertDescription>This is a {variant} alert description.</AlertDescription>
+              </Alert>
+            </div>
+          ))}
+        </Container>
 
-      {/* Alert */}
-      <Container componentName="Alert">
-        {['default', 'destructive'].map((variant) => (
-          <div key={variant}>
-            <StoryTitle>{variant}</StoryTitle>
-            <Alert key={variant} variant={variant as alertVariantsType}>
-              <AlertTitle>Alert {variant} title</AlertTitle>
-              <AlertDescription>This is a {variant} alert description.</AlertDescription>
-            </Alert>
+        {/* Select */}
+        <Container componentName="Select">
+          <div className="grid w-full grid-cols-2 gap-4">
+            <div>
+              <StoryTitle>Size default</StoryTitle>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a track" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Track 1</SelectItem>
+                  <SelectItem value="2">Track 2</SelectItem>
+                  <SelectItem value="3">Track 3</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <StoryTitle>Size sm</StoryTitle>
+              <Select>
+                <SelectTrigger size="sm">
+                  <SelectValue placeholder="Select a track" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Track 1</SelectItem>
+                  <SelectItem value="2">Track 2</SelectItem>
+                  <SelectItem value="3">Track 3</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        ))}
-      </Container>
+        </Container>
 
-      {/* Select */}
-      <Container componentName="Select">
-        <div className="grid w-full grid-cols-2 gap-2">
-          <div>
-            <StoryTitle>Size default</StoryTitle>
-            <Select>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a track" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">Track 1</SelectItem>
-                <SelectItem value="2">Track 2</SelectItem>
-                <SelectItem value="3">Track 3</SelectItem>
-              </SelectContent>
-            </Select>
+        {/* Agent control bar */}
+        <Container componentName="AgentControlBar">
+          <div className="relative flex items-center justify-center">
+            <AgentControlBar
+              className="w-full"
+              controls={{
+                leave: true,
+                chat: true,
+                camera: true,
+                microphone: true,
+                screenShare: true,
+              }}
+            />
           </div>
-          <div>
-            <StoryTitle>Size sm</StoryTitle>
-            <Select>
-              <SelectTrigger size="sm">
-                <SelectValue placeholder="Select a track" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">Track 1</SelectItem>
-                <SelectItem value="2">Track 2</SelectItem>
-                <SelectItem value="3">Track 3</SelectItem>
-              </SelectContent>
-            </Select>
+        </Container>
+
+        {/* Track device select */}
+        <Container componentName="TrackDeviceSelect">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <StoryTitle>Size default</StoryTitle>
+              <TrackDeviceSelect kind="audioinput" />
+            </div>
+            <div>
+              <StoryTitle>Size sm</StoryTitle>
+              <TrackDeviceSelect size="sm" kind="audioinput" />
+            </div>
           </div>
-        </div>
-      </Container>
+        </Container>
 
-      <h2 className="mt-40 mb-4 text-4xl font-extralight tracking-tight">Components</h2>
-
-      {/* Agent control bar */}
-      <Container componentName="AgentControlBar">
-        <div className="relative flex items-center justify-center">
-          <AgentControlBar
-            className="w-full"
-            controls={{
-              leave: true,
-              chat: true,
-              camera: true,
-              microphone: true,
-              screenShare: true,
-            }}
-          />
-        </div>
-      </Container>
-
-      {/* Track device select */}
-      <Container componentName="TrackDeviceSelect">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <StoryTitle>Size default</StoryTitle>
-            <TrackDeviceSelect kind="audioinput" />
+        {/* Track toggle */}
+        <Container componentName="TrackToggle">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <StoryTitle>Track.Source.Microphone</StoryTitle>
+              <TrackToggle variant="outline" source={Track.Source.Microphone} />
+            </div>
+            <div>
+              <StoryTitle>Track.Source.Camera</StoryTitle>
+              <TrackToggle variant="outline" source={Track.Source.Camera} />
+            </div>
           </div>
-          <div>
-            <StoryTitle>Size sm</StoryTitle>
-            <TrackDeviceSelect size="sm" kind="audioinput" />
-          </div>
-        </div>
-      </Container>
+        </Container>
 
-      {/* Track toggle */}
-      <Container componentName="TrackToggle">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <StoryTitle>Track.Source.Microphone</StoryTitle>
-            <TrackToggle variant="outline" source={Track.Source.Microphone} />
+        {/* Track selector */}
+        <Container componentName="TrackSelector">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <StoryTitle>Track.Source.Camera</StoryTitle>
+              <TrackSelector kind="videoinput" source={Track.Source.Camera} />
+            </div>
+            <div>
+              <StoryTitle>Track.Source.Microphone</StoryTitle>
+              <TrackSelector kind="audioinput" source={Track.Source.Microphone} />
+            </div>
           </div>
-          <div>
-            <StoryTitle>Track.Source.Camera</StoryTitle>
-            <TrackToggle variant="outline" source={Track.Source.Camera} />
+        </Container>
+
+        {/* Chat entry */}
+        <Container componentName="ChatEntry">
+          <div className="mx-auto max-w-prose space-y-4">
+            <ChatEntry
+              locale="en-US"
+              timestamp={Date.now() + 1000}
+              message="Hello, how are you?"
+              messageOrigin="local"
+              name="User"
+            />
+            <ChatEntry
+              locale="en-US"
+              timestamp={Date.now() + 5000}
+              message="I am good, how about you?"
+              messageOrigin="remote"
+              name="Agent"
+            />
           </div>
-        </div>
-      </Container>
+        </Container>
 
-      {/* Track selector */}
-      <Container componentName="TrackSelector">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <StoryTitle>Track.Source.Camera</StoryTitle>
-            <TrackSelector kind="videoinput" source={Track.Source.Camera} />
+        {/* Shimmer text */}
+        <Container componentName="ShimmerText">
+          <div className="text-center">
+            <ShimmerText>This is shimmer text</ShimmerText>
           </div>
-          <div>
-            <StoryTitle>Track.Source.Microphone</StoryTitle>
-            <TrackSelector kind="audioinput" source={Track.Source.Microphone} />
+        </Container>
+
+        {/* Alert toast */}
+        <Container componentName="AlertToast">
+          <StoryTitle>Alert toast</StoryTitle>
+          <div className="mx-auto max-w-prose">
+            <AlertToast
+              id="alert-toast"
+              title="Alert toast"
+              description="This is an alert toast description."
+            />
           </div>
-        </div>
-      </Container>
+        </Container>
+      </div>
+    </div>
+  );
+}
 
-      {/* Chat entry */}
-      <Container componentName="ChatEntry">
-        <div className="mx-auto max-w-prose space-y-4">
-          <ChatEntry
-            locale="en-US"
-            timestamp={Date.now() + 1000}
-            message="Hello, how are you?"
-            messageOrigin="local"
-            name="User"
-          />
-          <ChatEntry
-            locale="en-US"
-            timestamp={Date.now() + 5000}
-            message="I am good, how about you?"
-            messageOrigin="remote"
-            name="Agent"
-          />
-        </div>
-      </Container>
-
-      {/* Shimmer text */}
-      <Container componentName="ShimmerText">
-        <div className="text-center">
-          <ShimmerText>This is shimmer text</ShimmerText>
-        </div>
-      </Container>
-
-      {/* Alert toast */}
-      <Container componentName="AlertToast">
-        <StoryTitle>Alert toast</StoryTitle>
-        <div className="mx-auto max-w-prose">
-          <AlertToast
-            id="alert-toast"
-            title="Alert toast"
-            description="This is a alert toast description."
-          />
-        </div>
-      </Container>
+function FloatingParticles() {
+  return (
+    <>
+      <span className="absolute left-10 top-20 w-3 h-3 bg-purple-400 rounded-full animate-bounce"></span>
+      <span className="absolute right-28 top-48 w-4 h-4 bg-blue-400 rounded-full animate-ping"></span>
+      <span className="absolute bottom-24 left-1/3 w-2 h-2 bg-pink-500 rounded-full animate-pulse"></span>
     </>
   );
 }
